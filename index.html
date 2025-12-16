@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analyse der Fördermittel (Daten korrigiert)</title>
+    <title>Geschützter Bereich: Analyse der Fördermittel</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- SheetJS for reading Excel files -->
@@ -19,158 +19,215 @@
         .rotate-icon { transition: transform 0.3s; }
         .group-row:hover { background-color: #f8fafc; }
         .expanded .rotate-icon { transform: rotate(180deg); }
+
+        /* Login Overlay Blur */
+        .blur-content { filter: blur(5px); pointer-events: none; user-select: none; }
         
         @media print {
             .no-print { display: none !important; }
             .card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; margin-bottom: 20px; page-break-inside: avoid; }
             body { background-color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            /* Ensure expanded details are visible in print */
             tr:not(.hidden) { display: table-row !important; }
-            /* Hide elements explicitly marked to be hidden in print, but NOT details */
             .force-hidden-print { display: none !important; }
-            /* Better font sizing for print */
             body { font-size: 12pt; }
             h1 { font-size: 18pt; }
             .drop-zone { display: none; }
+            /* Hide Login on Print if unlocked */
+            #loginOverlay { display: none !important; }
         }
     </style>
 </head>
-<body class="text-gray-800">
+<body class="text-gray-800 h-screen overflow-hidden" id="mainBody">
 
-    <!-- Header -->
-    <header class="bg-slate-900 text-white p-6 shadow-lg no-print">
-        <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <div>
-                <h1 class="text-3xl font-bold">Analyse der Zuschusskürzungen</h1>
-                <p class="text-slate-400 mt-1">Version 8.0: Korrekte Gesamtbasis (inkl. bewilligter Mittel)</p>
+    <!-- LOGIN OVERLAY -->
+    <div id="loginOverlay" class="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full text-center">
+            <div class="mb-6">
+                <div class="h-16 w-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800">Geschützter Bereich</h2>
+                <p class="text-gray-500 mt-2">Bitte geben Sie das Passwort ein, um auf die Analyse zuzugreifen.</p>
             </div>
-            <button onclick="triggerPrint()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition shadow-md flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                Drucken
-            </button>
+            
+            <form onsubmit="checkPassword(event)" class="space-y-4">
+                <input type="password" id="passwordInput" placeholder="Passwort eingeben" class="w-full px-4 py-3 rounded border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition" autofocus>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded transition shadow-lg">
+                    Zugriff freischalten
+                </button>
+                <p id="loginError" class="text-red-500 text-sm hidden font-medium">Falsches Passwort!</p>
+            </form>
+            <p class="text-xs text-gray-400 mt-6">Hinweis: Dies ist ein Client-seitiger Schutz.</p>
         </div>
-    </header>
-
-    <!-- Print Header (Visible only in print) -->
-    <div class="hidden print:block p-6 mb-4 border-b">
-        <h1 class="text-2xl font-bold text-gray-900">Analysebericht: Zuschusskürzungen</h1>
-        <p class="text-sm text-gray-500">Erstellt am: <script>document.write(new Date().toLocaleDateString())</script></p>
     </div>
 
-    <main class="max-w-7xl mx-auto p-6 space-y-8 print:p-0">
-
-        <!-- Upload Section -->
-        <div class="card no-print bg-blue-50 border-blue-100">
-            <div class="flex flex-col md:flex-row items-center gap-6">
-                <div class="flex-1">
-                    <h2 class="text-lg font-bold text-blue-900 mb-1">📊 Daten laden</h2>
-                    <p class="text-sm text-blue-700">Laden Sie Ihre Excel-Datei hoch. Die Berechnung berücksichtigt nun ALLE Anträge für korrekte Quoten.</p>
+    <!-- MAIN APP CONTENT (Initially Hidden/Blurred) -->
+    <div id="appContent" class="hidden h-full overflow-auto">
+        
+        <!-- Header -->
+        <header class="bg-slate-900 text-white p-6 shadow-lg no-print">
+            <div class="max-w-7xl mx-auto flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold">Analyse der Zuschusskürzungen</h1>
+                    <p class="text-slate-400 mt-1">Version 9.0: Passwortgeschützt & Print-Fix</p>
                 </div>
-                <div class="drop-zone rounded-lg px-8 py-6 text-center cursor-pointer relative flex-1 w-full border-blue-200 bg-white">
-                    <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFile(this.files[0])">
-                    <div class="pointer-events-none flex items-center justify-center gap-3">
-                        <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                        <div class="text-left">
-                            <p class="font-medium text-slate-700">Datei auswählen</p>
-                            <p class="text-xs text-slate-400">.xlsx oder .csv</p>
+                <button onclick="triggerPrint()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition shadow-md flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    Drucken
+                </button>
+            </div>
+        </header>
+
+        <!-- Print Header -->
+        <div class="hidden print:block p-6 mb-4 border-b">
+            <h1 class="text-2xl font-bold text-gray-900">Analysebericht: Zuschusskürzungen</h1>
+            <p class="text-sm text-gray-500">Erstellt am: <script>document.write(new Date().toLocaleDateString())</script></p>
+        </div>
+
+        <main class="max-w-7xl mx-auto p-6 space-y-8 print:p-0">
+            <!-- Upload Section -->
+            <div class="card no-print bg-blue-50 border-blue-100">
+                <div class="flex flex-col md:flex-row items-center gap-6">
+                    <div class="flex-1">
+                        <h2 class="text-lg font-bold text-blue-900 mb-1">📊 Daten laden</h2>
+                        <p class="text-sm text-blue-700">Laden Sie Ihre Excel-Datei hoch. Die Berechnung berücksichtigt alle Anträge.</p>
+                    </div>
+                    <div class="drop-zone rounded-lg px-8 py-6 text-center cursor-pointer relative flex-1 w-full border-blue-200 bg-white">
+                        <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="handleFile(this.files[0])">
+                        <div class="pointer-events-none flex items-center justify-center gap-3">
+                            <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <div class="text-left">
+                                <p class="font-medium text-slate-700">Datei auswählen</p>
+                                <p class="text-xs text-slate-400">.xlsx oder .csv</p>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <div id="statusMsg" class="mt-4 hidden text-center text-sm font-medium p-2 rounded bg-green-100 text-green-700"></div>
             </div>
-            <div id="statusMsg" class="mt-4 hidden text-center text-sm font-medium p-2 rounded bg-green-100 text-green-700"></div>
-        </div>
 
-        <!-- KPI Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 print:grid-cols-4">
-            <div class="card border-l-4 border-gray-400 py-4">
-                <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Gesamt Beantragt</p>
-                <p class="text-xl font-bold text-gray-700 mt-1" id="kpiSubmitted">0,00 €</p>
-            </div>
-            <div class="card border-l-4 border-red-600 py-4">
-                <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Gesamtkürzung</p>
-                <p class="text-xl font-bold text-red-600 mt-1" id="kpiTotal">0,00 €</p>
-            </div>
-            <div class="card border-l-4 border-orange-500 py-4">
-                <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Ø Kürzungsquote</p>
-                <p class="text-xl font-bold text-orange-600 mt-1" id="kpiPercent">0,0 %</p>
-            </div>
-            <div class="card border-l-4 border-blue-500 py-4">
-                <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Landkreise</p>
-                <p class="text-xl font-bold text-gray-800 mt-1" id="kpiCount">0</p>
-            </div>
-        </div>
-
-        <!-- GLOBAL STATS SECTION -->
-        <div id="globalStatsContainer" class="hidden space-y-4">
-            <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                <span class="bg-gray-800 text-white rounded p-1 text-sm no-print">NEU</span>
-                Landesweite Statistik
-            </h2>
-            <div class="card">
-                <h3 class="text-lg font-semibold text-gray-700 mb-4">Top-Kürzungsquoten nach Themenbereich (Gesamt)</h3>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="text-xs font-semibold text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
-                                <th class="py-3 px-4">Hauptbereich</th>
-                                <th class="py-3 px-4 text-right">Volumen Beantragt</th>
-                                <th class="py-3 px-4 text-right">Volumen Gekürzt</th>
-                                <th class="py-3 px-4 text-right">Quote</th>
-                                <th class="py-3 px-4 w-32 no-print">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="globalStatsBody" class="text-sm divide-y divide-gray-100">
-                            <!-- JS Injected -->
-                        </tbody>
-                    </table>
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 print:grid-cols-4">
+                <div class="card border-l-4 border-gray-400 py-4">
+                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Gesamt Beantragt</p>
+                    <p class="text-xl font-bold text-gray-700 mt-1" id="kpiSubmitted">0,00 €</p>
+                </div>
+                <div class="card border-l-4 border-red-600 py-4">
+                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Gesamtkürzung</p>
+                    <p class="text-xl font-bold text-red-600 mt-1" id="kpiTotal">0,00 €</p>
+                </div>
+                <div class="card border-l-4 border-orange-500 py-4">
+                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Ø Kürzungsquote</p>
+                    <p class="text-xl font-bold text-orange-600 mt-1" id="kpiPercent">0,0 %</p>
+                </div>
+                <div class="card border-l-4 border-blue-500 py-4">
+                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Landkreise</p>
+                    <p class="text-xl font-bold text-gray-800 mt-1" id="kpiCount">0</p>
                 </div>
             </div>
-        </div>
 
-        <!-- Charts Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 print:block print:space-y-6">
-            <div class="card break-inside-avoid">
-                <h2 class="text-lg font-semibold mb-4 text-gray-700">Absolutes Kürzungsvolumen (Top 5)</h2>
-                <div class="relative h-60 w-full">
-                    <canvas id="categoryChart"></canvas>
+            <!-- Global Stats -->
+            <div id="globalStatsContainer" class="hidden space-y-4">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <span class="bg-gray-800 text-white rounded p-1 text-sm no-print">NEU</span>
+                    Landesweite Statistik
+                </h2>
+                <div class="card">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-4">Top-Kürzungsquoten nach Themenbereich</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="text-xs font-semibold text-gray-500 uppercase bg-gray-50 border-b border-gray-200">
+                                    <th class="py-3 px-4">Hauptbereich</th>
+                                    <th class="py-3 px-4 text-right">Volumen Beantragt</th>
+                                    <th class="py-3 px-4 text-right">Volumen Gekürzt</th>
+                                    <th class="py-3 px-4 text-right">Quote</th>
+                                    <th class="py-3 px-4 w-32 no-print">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="globalStatsBody" class="text-sm divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-            <div class="card break-inside-avoid">
-                <h2 class="text-lg font-semibold mb-4 text-gray-700">Verteilung nach Landkreis</h2>
-                <div class="relative h-60 w-full flex justify-center">
-                    <canvas id="regionChart"></canvas>
+
+            <!-- Charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 print:block print:space-y-6">
+                <div class="card break-inside-avoid">
+                    <h2 class="text-lg font-semibold mb-4 text-gray-700">Absolutes Kürzungsvolumen (Top 5)</h2>
+                    <div class="relative h-60 w-full">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+                <div class="card break-inside-avoid">
+                    <h2 class="text-lg font-semibold mb-4 text-gray-700">Verteilung nach Landkreis</h2>
+                    <div class="relative h-60 w-full flex justify-center">
+                        <canvas id="regionChart"></canvas>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Detailed Tables Section -->
-        <div id="tablesContainer" class="space-y-8">
-            <div class="text-center text-gray-400 py-12 italic border-2 border-dashed border-gray-200 rounded-lg no-print">
-                Bitte laden Sie eine Datei hoch, um die Detailauswertung zu sehen.
+            <!-- Detailed Tables -->
+            <div id="tablesContainer" class="space-y-8">
+                <div class="text-center text-gray-400 py-12 italic border-2 border-dashed border-gray-200 rounded-lg no-print">
+                    Bitte laden Sie eine Datei hoch, um die Detailauswertung zu sehen.
+                </div>
             </div>
-        </div>
+        </main>
 
-    </main>
-
-    <footer class="bg-slate-900 text-slate-400 py-8 mt-12 no-print">
-        <div class="max-w-7xl mx-auto px-6 text-center text-sm">
-            <p>Generiertes Analyse-Tool (Version 8.0 - Daten-Fix)</p>
-        </div>
-    </footer>
+        <footer class="bg-slate-900 text-slate-400 py-8 mt-12 no-print">
+            <div class="max-w-7xl mx-auto px-6 text-center text-sm">
+                <p>Generiertes Analyse-Tool (Version 9.0)</p>
+            </div>
+        </footer>
+    </div>
 
     <script>
-        // --- Print Trigger ---
-        function triggerPrint() {
-            window.print();
+        // --- PASSWORD PROTECTION LOGIC ---
+        // Das Passwort ist hier festgelegt. Ändern Sie "Sachsen2025" in Ihr gewünschtes Passwort.
+        const PASSWORD = "Sachsen2025"; 
+
+        function checkPassword(e) {
+            e.preventDefault();
+            const input = document.getElementById('passwordInput').value;
+            const errorMsg = document.getElementById('loginError');
+            const overlay = document.getElementById('loginOverlay');
+            const app = document.getElementById('appContent');
+            const body = document.getElementById('mainBody');
+
+            if (input === PASSWORD) {
+                // Success
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    app.classList.remove('hidden');
+                    body.classList.remove('overflow-hidden');
+                    // Initialize charts ONLY after login to ensure correct rendering
+                    initCharts();
+                }, 300);
+            } else {
+                // Error
+                errorMsg.classList.remove('hidden');
+                document.getElementById('passwordInput').classList.add('border-red-500');
+            }
         }
 
-        // --- Chart Initialization ---
+        // --- Standard Logic Below ---
+        function triggerPrint() { window.print(); }
+
         let chartCategory = null;
         let chartRegion = null;
 
         function initCharts() {
-            const ctxCat = document.getElementById('categoryChart').getContext('2d');
+            // Check if canvas exists (it might not be visible yet if login is pending)
+            const canvasCat = document.getElementById('categoryChart');
+            if(!canvasCat) return;
+
+            const ctxCat = canvasCat.getContext('2d');
             const ctxReg = document.getElementById('regionChart').getContext('2d');
+
+            if (chartCategory) chartCategory.destroy();
+            if (chartRegion) chartRegion.destroy();
 
             chartCategory = new Chart(ctxCat, {
                 type: 'bar',
@@ -193,8 +250,7 @@
                 }
             });
         }
-        initCharts();
-
+        
         // --- File Handling ---
         function handleFile(file) {
             if (!file) return;
@@ -205,9 +261,7 @@
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
-                
                 processData(jsonData);
-                
                 const status = document.getElementById('statusMsg');
                 status.textContent = `Daten geladen: ${file.name}`;
                 status.classList.remove('hidden');
@@ -216,9 +270,7 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // --- Logic: Parse, Aggregate & Group ---
         function processData(rawData) {
-            // 1. Normalize - NOW INCLUDES ALL ROWS (even cut=0)
             const flatData = rawData.map(row => {
                 const findKey = (keywords) => Object.keys(row).find(k => keywords.some(kw => k.toLowerCase().includes(kw)));
                 const keyRegion = findKey(['landkreis', 'kreis']);
@@ -236,9 +288,6 @@
 
                 const sub = parseMoney(row[keySubmitted]);
                 const adj = parseMoney(row[keyAdjusted]);
-                
-                // Fix logic: If adj > sub (increase), treat cut as 0. 
-                // Only negative difference is a "Cut".
                 let cut = sub - adj;
                 if(cut < 0.01) cut = 0; 
 
@@ -251,15 +300,12 @@
                     cut: cut
                 };
             });
-            // REMOVED .filter(item => item.cut > 0) to keep full base for calculations!
 
-            // 2. Aggregate Duplicates
             const mapKey = {};
             flatData.forEach(item => {
                 const key = `${item.region}|${item.category}|${item.subCategory}`;
-                if (!mapKey[key]) {
-                    mapKey[key] = { ...item };
-                } else {
+                if (!mapKey[key]) { mapKey[key] = { ...item }; } 
+                else {
                     mapKey[key].submitted += item.submitted;
                     mapKey[key].adjusted += item.adjusted;
                     mapKey[key].cut += item.cut;
@@ -267,68 +313,38 @@
             });
             const aggregatedList = Object.values(mapKey);
 
-            // 3. GLOBAL STATS AGGREGATION
             const globalCategories = {};
             aggregatedList.forEach(item => {
-                if(!globalCategories[item.category]) {
-                    globalCategories[item.category] = { submitted: 0, cut: 0 };
-                }
+                if(!globalCategories[item.category]) globalCategories[item.category] = { submitted: 0, cut: 0 };
                 globalCategories[item.category].submitted += item.submitted;
                 globalCategories[item.category].cut += item.cut;
             });
             const globalStatsArray = Object.entries(globalCategories).map(([name, stats]) => ({
-                name,
-                submitted: stats.submitted,
-                cut: stats.cut,
+                name, submitted: stats.submitted, cut: stats.cut,
                 percent: stats.submitted > 0 ? stats.cut / stats.submitted : 0
             })).sort((a,b) => b.percent - a.percent); 
 
             renderGlobalStats(globalStatsArray);
 
-            // 4. Build Hierarchy for Regional Display
             const hierarchy = {};
-
             aggregatedList.forEach(item => {
-                if (!hierarchy[item.region]) {
-                    hierarchy[item.region] = { 
-                        name: item.region, 
-                        totalCut: 0, 
-                        categories: {} 
-                    };
-                }
+                if (!hierarchy[item.region]) hierarchy[item.region] = { name: item.region, totalCut: 0, categories: {} };
                 const regObj = hierarchy[item.region];
                 regObj.totalCut += item.cut;
-
-                if (!regObj.categories[item.category]) {
-                    regObj.categories[item.category] = {
-                        name: item.category,
-                        totalCut: 0,
-                        totalSubmitted: 0,
-                        items: []
-                    };
-                }
+                if (!regObj.categories[item.category]) regObj.categories[item.category] = { name: item.category, totalCut: 0, totalSubmitted: 0, items: [] };
                 const catObj = regObj.categories[item.category];
                 catObj.totalCut += item.cut;
                 catObj.totalSubmitted += item.submitted;
                 catObj.items.push(item);
             });
 
-            // Sorting for Display
-            // Sort Regions by Total CUT Amount (to show impact hot spots first)
             const sortedRegions = Object.values(hierarchy).sort((a, b) => b.totalCut - a.totalCut); 
-            
             sortedRegions.forEach(reg => {
                 reg.sortedCategories = Object.values(reg.categories);
-                
-                // Calc Percent for Cats
                 reg.sortedCategories.forEach(cat => {
                     cat.percent = cat.totalSubmitted > 0 ? cat.totalCut / cat.totalSubmitted : 0;
-                    
-                    // Sort items by Cut Amount descending for details
                     cat.items.sort((a, b) => b.cut - a.cut);
                 });
-
-                // Sort Categories by % Descending
                 reg.sortedCategories.sort((a, b) => b.percent - a.percent);
             });
 
@@ -338,165 +354,71 @@
         function renderGlobalStats(stats) {
             const tbody = document.getElementById('globalStatsBody');
             tbody.innerHTML = '';
-            
             stats.forEach(stat => {
                 const p = stat.percent * 100;
-                let colorClass = "bg-green-100 text-green-800";
-                let label = "Moderat";
-                if(p > 20) { colorClass = "bg-yellow-100 text-yellow-800"; label = "Hoch"; }
-                if(p > 50) { colorClass = "bg-red-100 text-red-800"; label = "Kritisch"; }
-                
-                const width = Math.min(Math.round(p), 100);
-
-                tbody.innerHTML += `
-                    <tr>
-                        <td class="py-3 px-4 font-medium text-gray-700">${stat.name}</td>
-                        <td class="py-3 px-4 text-right text-gray-500">${formatMoney(stat.submitted)}</td>
-                        <td class="py-3 px-4 text-right text-red-600 font-medium">- ${formatMoney(stat.cut)}</td>
-                        <td class="py-3 px-4 text-right font-bold text-gray-800">${formatPercent(stat.percent)}</td>
-                        <td class="py-3 px-4 no-print">
-                            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1">
-                                <div class="h-2.5 rounded-full ${p > 50 ? 'bg-red-500' : (p > 20 ? 'bg-yellow-400' : 'bg-green-500')}" style="width: ${width}%"></div>
-                            </div>
-                        </td>
-                    </tr>
-                `;
+                let width = Math.min(Math.round(p), 100);
+                tbody.innerHTML += `<tr>
+                    <td class="py-3 px-4 font-medium text-gray-700">${stat.name}</td>
+                    <td class="py-3 px-4 text-right text-gray-500">${formatMoney(stat.submitted)}</td>
+                    <td class="py-3 px-4 text-right text-red-600 font-medium">- ${formatMoney(stat.cut)}</td>
+                    <td class="py-3 px-4 text-right font-bold text-gray-800">${formatPercent(stat.percent)}</td>
+                    <td class="py-3 px-4 no-print"><div class="w-full bg-gray-200 rounded-full h-2.5"><div class="h-2.5 rounded-full ${p > 50 ? 'bg-red-500' : (p > 20 ? 'bg-yellow-400' : 'bg-green-500')}" style="width: ${width}%"></div></div></td>
+                </tr>`;
             });
         }
 
         function updateDashboard(flatList, hierarchy) {
-            // KPIs
             const totalCut = flatList.reduce((sum, item) => sum + item.cut, 0);
             const totalSubmitted = flatList.reduce((sum, item) => sum + item.submitted, 0);
             const totalPercent = totalSubmitted > 0 ? (totalCut / totalSubmitted) * 100 : 0;
-
+            
             document.getElementById('kpiTotal').textContent = formatMoney(totalCut);
             document.getElementById('kpiSubmitted').textContent = formatMoney(totalSubmitted);
             document.getElementById('kpiPercent').textContent = formatPercent(totalPercent / 100);
             document.getElementById('kpiCount').textContent = hierarchy.length;
 
-            // Charts
             const globalCats = {};
-            flatList.forEach(d => {
-                globalCats[d.category] = (globalCats[d.category] || 0) + d.cut;
-            });
+            flatList.forEach(d => { globalCats[d.category] = (globalCats[d.category] || 0) + d.cut; });
             const topCats = Object.entries(globalCats).sort((a,b) => b[1] - a[1]).slice(0, 5);
             
-            updateChart(chartCategory, topCats.map(x => x[0]), topCats.map(x => x[1]), 'bar');
-            updateChart(chartRegion, hierarchy.map(x => x.name), hierarchy.map(x => x.totalCut), 'doughnut');
+            // Safe update of charts
+            if(chartCategory && chartRegion) {
+                updateChart(chartCategory, topCats.map(x => x[0]), topCats.map(x => x[1]));
+                updateChart(chartRegion, hierarchy.map(x => x.name), hierarchy.map(x => x.totalCut));
+            }
 
-            // --- RENDER REGIONAL TABLES ---
             const container = document.getElementById('tablesContainer');
             container.innerHTML = '';
 
             hierarchy.forEach((region, rIndex) => {
                 let tableRows = '';
-                
                 region.sortedCategories.forEach((cat, cIndex) => {
                     const rowId = `row-${rIndex}-${cIndex}`;
                     const percent = cat.percent;
-                    
-                    // Badge Color
-                    let badgeClass = "bg-green-100 text-green-800";
-                    if (percent > 0.2) badgeClass = "bg-yellow-100 text-yellow-800";
-                    if (percent > 0.5) badgeClass = "bg-red-100 text-red-800";
+                    let badgeClass = percent > 0.5 ? "bg-red-100 text-red-800" : (percent > 0.2 ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800");
 
-                    // 1. MAIN CATEGORY ROW
-                    tableRows += `
-                        <tr onclick="toggleRow('${rowId}')" class="group-row cursor-pointer border-b border-gray-100 hover:bg-blue-50 transition" id="${rowId}-head">
-                            <td class="py-4 px-4 font-semibold text-gray-800 flex items-center gap-3">
-                                <svg class="w-4 h-4 text-gray-400 rotate-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                <span>${cat.name}</span>
-                            </td>
-                            <td class="py-4 px-4 text-right text-sm text-gray-500 hidden md:table-cell">
-                                ${formatMoney(cat.totalSubmitted)}
-                            </td>
-                            <td class="py-4 px-4 text-right">
-                                <span class="${badgeClass} px-3 py-1 rounded-full text-xs font-bold shadow-sm">${formatPercent(percent)}</span>
-                            </td>
-                            <td class="py-4 px-4 text-right font-bold text-red-700">
-                                - ${formatMoney(cat.totalCut)}
-                            </td>
-                        </tr>
-                    `;
+                    tableRows += `<tr onclick="toggleRow('${rowId}')" class="group-row cursor-pointer border-b border-gray-100 hover:bg-blue-50 transition" id="${rowId}-head">
+                        <td class="py-4 px-4 font-semibold text-gray-800 flex items-center gap-3"><svg class="w-4 h-4 text-gray-400 rotate-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg><span>${cat.name}</span></td>
+                        <td class="py-4 px-4 text-right text-sm text-gray-500 hidden md:table-cell">${formatMoney(cat.totalSubmitted)}</td>
+                        <td class="py-4 px-4 text-right"><span class="${badgeClass} px-3 py-1 rounded-full text-xs font-bold shadow-sm">${formatPercent(percent)}</span></td>
+                        <td class="py-4 px-4 text-right font-bold text-red-700">- ${formatMoney(cat.totalCut)}</td>
+                    </tr>`;
 
-                    // 2. DETAIL ROW
-                    let detailTable = `<table class="w-full bg-slate-50 text-sm table-fixed">`;
-                    detailTable += `
-                        <tr class="text-xs text-gray-400 border-b border-slate-200">
-                            <th class="py-2 pl-12 pr-4 text-left font-normal w-1/2">Maßnahme / Unterbereich</th>
-                            <th class="py-2 px-4 text-right font-normal">Beantragt</th>
-                            <th class="py-2 px-4 text-right font-normal">Quote</th>
-                            <th class="py-2 px-4 text-right font-normal text-red-400">Kürzung</th>
-                        </tr>`;
-
-                    // Only show items with CUT > 0 in the details list to avoid clutter,
-                    // but the header (Totals) reflects the full volume.
+                    let detailTable = `<table class="w-full bg-slate-50 text-sm table-fixed"><tr class="text-xs text-gray-400 border-b border-slate-200"><th class="py-2 pl-12 pr-4 text-left font-normal w-1/2">Maßnahme</th><th class="py-2 px-4 text-right font-normal">Beantragt</th><th class="py-2 px-4 text-right font-normal">Quote</th><th class="py-2 px-4 text-right font-normal text-red-400">Kürzung</th></tr>`;
                     let shownCount = 0;
                     cat.items.forEach(item => {
-                        if (item.cut <= 0) return; // Hide zero-cut items in detail list
+                        if (item.cut <= 0) return;
                         shownCount++;
-
                         const itemPercent = item.submitted > 0 ? (item.cut / item.submitted) : 0;
                         const warnClass = itemPercent > 0.5 ? "text-red-600 font-bold" : (itemPercent > 0.2 ? "text-yellow-700" : "text-gray-500");
-                        
-                        detailTable += `
-                            <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-100">
-                                <td class="py-2 pl-12 pr-4 text-slate-700 truncate" title="${item.subCategory}">${item.subCategory}</td>
-                                <td class="py-2 px-4 text-right text-slate-400">${formatMoney(item.submitted)}</td>
-                                <td class="py-2 px-4 text-right ${warnClass}">${formatPercent(itemPercent)}</td>
-                                <td class="py-2 px-4 text-right text-red-500 font-medium">- ${formatMoney(item.cut)}</td>
-                            </tr>
-                        `;
+                        detailTable += `<tr class="border-b border-slate-100 hover:bg-slate-100"><td class="py-2 pl-12 pr-4 text-slate-700 truncate" title="${item.subCategory}">${item.subCategory}</td><td class="py-2 px-4 text-right text-slate-400">${formatMoney(item.submitted)}</td><td class="py-2 px-4 text-right ${warnClass}">${formatPercent(itemPercent)}</td><td class="py-2 px-4 text-right text-red-500 font-medium">- ${formatMoney(item.cut)}</td></tr>`;
                     });
-                    
-                    if(shownCount === 0) {
-                        detailTable += `<tr><td colspan="4" class="py-2 pl-12 text-gray-400 italic">Keine Einzelkürzungen in diesem Bereich.</td></tr>`;
-                    }
-                    
+                    if(shownCount === 0) detailTable += `<tr><td colspan="4" class="py-2 pl-12 text-gray-400 italic">Keine Einzelkürzungen (Pauschal oder andere Gründe).</td></tr>`;
                     detailTable += `</table>`;
-
-                    tableRows += `
-                        <tr id="${rowId}" class="hidden">
-                            <td colspan="4" class="p-0 border-b border-gray-200 shadow-inner">
-                                ${detailTable}
-                            </td>
-                        </tr>
-                    `;
+                    tableRows += `<tr id="${rowId}" class="hidden"><td colspan="4" class="p-0 border-b border-gray-200 shadow-inner">${detailTable}</td></tr>`;
                 });
 
-                const cardHtml = `
-                <div class="card break-inside-avoid">
-                    <div class="flex items-center justify-between mb-2 border-b pb-3">
-                        <div class="flex items-center gap-3">
-                            <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
-                                ${region.name.substring(0,2).toUpperCase()}
-                            </div>
-                            <h2 class="text-xl font-bold text-slate-800">${region.name}</h2>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-xs text-gray-400 uppercase tracking-wider">Gesamtkürzung</div>
-                            <div class="font-bold text-red-600 text-lg">- ${formatMoney(region.totalCut)}</div>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="text-xs text-gray-400 border-b bg-white uppercase tracking-wider">
-                                    <th class="py-2 px-4 w-1/3">Hauptfokus (Nach Quote sortiert)</th>
-                                    <th class="py-2 px-4 text-right hidden md:table-cell">Gesamtvolumen</th>
-                                    <th class="py-2 px-4 text-right">Quote</th>
-                                    <th class="py-2 px-4 text-right">Differenz</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                ${tableRows}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>`;
-                
-                container.innerHTML += cardHtml;
+                container.innerHTML += `<div class="card break-inside-avoid"><div class="flex items-center justify-between mb-2 border-b pb-3"><div class="flex items-center gap-3"><div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">${region.name.substring(0,2).toUpperCase()}</div><h2 class="text-xl font-bold text-slate-800">${region.name}</h2></div><div class="text-right"><div class="text-xs text-gray-400 uppercase tracking-wider">Gesamtkürzung</div><div class="font-bold text-red-600 text-lg">- ${formatMoney(region.totalCut)}</div></div></div><div class="overflow-x-auto"><table class="w-full text-left border-collapse"><thead><tr class="text-xs text-gray-400 border-b bg-white uppercase tracking-wider"><th class="py-2 px-4 w-1/3">Hauptfokus</th><th class="py-2 px-4 text-right hidden md:table-cell">Gesamtvolumen</th><th class="py-2 px-4 text-right">Quote</th><th class="py-2 px-4 text-right">Differenz</th></tr></thead><tbody class="divide-y divide-gray-100">${tableRows}</tbody></table></div></div>`;
             });
         }
 
@@ -512,23 +434,13 @@
             }
         };
 
-        function updateChart(chart, labels, data, type) {
+        function updateChart(chart, labels, data) {
             chart.data.labels = labels;
-            chart.data.datasets = [{
-                data: data,
-                backgroundColor: ['#EF4444', '#3B82F6', '#F59E0B', '#10B981', '#6B7280', '#8B5CF6'],
-                borderWidth: 0
-            }];
+            chart.data.datasets = [{ data: data, backgroundColor: ['#EF4444', '#3B82F6', '#F59E0B', '#10B981', '#6B7280', '#8B5CF6'], borderWidth: 0 }];
             chart.update();
         }
-
-        function formatMoney(num) {
-            return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(num);
-        }
-
-        function formatPercent(num) {
-            return new Intl.NumberFormat('de-DE', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(num);
-        }
+        function formatMoney(num) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(num); }
+        function formatPercent(num) { return new Intl.NumberFormat('de-DE', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(num); }
     </script>
 </body>
 </html>
